@@ -1,0 +1,39 @@
+name: SunShulkers
+version: '1.0.1'
+main: com.sunshulkers.SunShulkersPlugin
+api-version: 1.16
+authors: [sᴜɴsᴛᴜᴅɪᴏ]
+description: Плагин что-бы открывать шалкера из инвентаря с кулдауном.
+website: https://studio.sunworld.pro
+
+commands:
+  sunshulkers:
+    description: Главная команда плагина SunShulkers
+    usage: /<command> [reload]
+    permission: sunshulkers.admin
+    aliases: [ss, shulkers]
+  autocollect:
+    description: Управление автосбором предметов в шалкер
+    usage: /<command> [on/off/status]
+    permission: sunshulkers.autocollect
+    aliases: [ac, автосбор, автосборщик]
+
+permissions:
+  sunshulkers.use:
+    description: Разрешает игроку использовать открытие шалкеров из инвентаря
+    default: true
+  sunshulkers.admin:
+    description: Разрешает доступ к административным командам
+    default: op
+  sunshulkers.bypass:
+    description: Игнорирует ограничения кулдауна
+    default: false
+  sunshulkers.color:
+    description: Разрешает использование цветов в именах шалкеров через наковальню (MiniMessage и legacy коды)
+    default: false
+  sunshulkers.rename:
+    description: Разрешает переименование шалкеров через специальную кнопку в наковальне
+    default: true
+  sunshulkers.autocollect:
+    description: Разрешает автоматический сбор предметов в шалкер в руке
+    default: true
