@@ -258,7 +258,7 @@ message: "&aЗеленый &cКрасный &fБелый"
 Для сборки плагина из исходного кода:
 
 ```bash
-git clone https://111
+git clone https://github.com/SunStudio-Dev/SunShulkers.git
 cd sunshulkers
 mvn clean package
 ```
