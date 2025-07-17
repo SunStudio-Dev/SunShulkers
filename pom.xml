@@ -11,7 +11,7 @@
 
     <name>SunShulkers</name>
     <description>Plugin for opening shulkers from inventory with cooldown and effects</description>
-    <url>https://github.com/yourusername/sunshulkers</url>
+    <url>https://github.com/SunStudio-Dev/SunShulkers</url>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
