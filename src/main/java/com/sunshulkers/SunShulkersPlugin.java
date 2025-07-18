@@ -36,17 +36,21 @@ public class SunShulkersPlugin extends JavaPlugin {
         
         // Инициализация менеджеров
         this.configManager = new ConfigManager(this);
+        // Загрузка конфигурации - важно сделать это сразу после создания ConfigManager
+        configManager.loadConfig();
+        
         this.cooldownManager = new CooldownManager();
         this.databaseManager = new DatabaseManager(this);
         this.autoCollectManager = new AutoCollectManager(this);
         this.messageUtils = new MessageUtils(this);
         this.updateChecker = new UpdateChecker(this);
         
-        // Загрузка конфигурации
-        configManager.loadConfig();
-        
         // Инициализация базы данных
-        databaseManager.initialize();
+        if (!databaseManager.initialize()) {
+            getLogger().severe("Не удалось инициализировать базу данных! Плагин будет отключен.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         
         // Регистрация событий
         getServer().getPluginManager().registerEvents(new ShulkerListener(this), this);

@@ -58,6 +58,7 @@ public class UpdateChecker {
                         String response = reader.readLine();
                         if (response != null && !response.isEmpty()) {
                             // Ожидаем простой текстовый ответ с версией
+                            // Или JSON: {"version": "1.0.1", "download": "url", "changelog": "..."}
                             latestVersion = response.trim();
                             
                             // Сравниваем версии

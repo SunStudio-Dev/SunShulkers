@@ -355,4 +355,21 @@ public class ConfigManager {
                 .filter(mode -> mode != null)
                 .collect(Collectors.toList());
     }
+    
+    // Настройки базы данных
+    public String getDatabaseCompatibilityMode() {
+        return config.getString("settings.database.compatibility-mode", "MySQL");
+    }
+    
+    public String getDatabaseFilename() {
+        return config.getString("settings.database.filename", "data");
+    }
+    
+    public String getDatabaseUsername() {
+        return config.getString("settings.database.username", "sa");
+    }
+    
+    public String getDatabasePassword() {
+        return config.getString("settings.database.password", "");
+    }
 }
