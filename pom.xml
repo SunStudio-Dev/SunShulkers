@@ -10,13 +10,8 @@
     <packaging>jar</packaging>
 
     <name>SunShulkers</name>
-<<<<<<< HEAD
     <description>Менеджер Шалкеров</description>
     <url>https://github.com/SunStudio-Dev/sunshulkers</url>
-=======
-    <description>Plugin for opening shulkers from inventory with cooldown and effects</description>
-    <url>https://github.com/SunStudio-Dev/SunShulkers</url>
->>>>>>> 9d0377fbb7565c5aa47b78def7cb937fe7ede2cb
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
