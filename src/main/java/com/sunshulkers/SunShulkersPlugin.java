@@ -26,6 +26,7 @@ public class SunShulkersPlugin extends JavaPlugin {
     private AutoCollectManager autoCollectManager;
     private DatabaseManager databaseManager;
     private UpdateChecker updateChecker;
+    private ShulkerListener shulkerListener;
 
     @Override
     public void onEnable() {
@@ -53,7 +54,8 @@ public class SunShulkersPlugin extends JavaPlugin {
         }
         
         // Регистрация событий
-        getServer().getPluginManager().registerEvents(new ShulkerListener(this), this);
+        this.shulkerListener = new ShulkerListener(this);
+        getServer().getPluginManager().registerEvents(shulkerListener, this);
         getServer().getPluginManager().registerEvents(new AnvilListener(this), this);
         getServer().getPluginManager().registerEvents(new AutoCollectListener(this), this);
         getServer().getPluginManager().registerEvents(new UpdateNotifyListener(this), this);
@@ -147,5 +149,9 @@ public class SunShulkersPlugin extends JavaPlugin {
     
     public UpdateChecker getUpdateChecker() {
         return updateChecker;
+    }
+    
+    public ShulkerListener getShulkerListener() {
+        return shulkerListener;
     }
 }
