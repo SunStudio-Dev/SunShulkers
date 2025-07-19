@@ -45,6 +45,8 @@ public class MessageComponents {
     private Component renameCancelledMessage;
     // Сообщение при закрытии GUI по атаке
     private Component closeOnAttackMessage;
+    // Сообщение при попытке выбросить открытый шалкер
+    private Component cannotDropOpenShulker;
     
     public MessageComponents() {
         this.miniMessage = MiniMessage.miniMessage();
@@ -73,7 +75,8 @@ public class MessageComponents {
             String renameInvalidMessage,
             String renameTooltipMessage,
             String renameCancelledMessage,
-            String closeOnAttackMessage
+            String closeOnAttackMessage,
+            String cannotDropOpenShulker
     ) {
         this.prefix = parseComponent(prefix);
         this.reloadMessage = parseComponent(reloadMessage);
@@ -96,6 +99,7 @@ public class MessageComponents {
         this.renameCancelledMessage = parseComponent(renameCancelledMessage);
         // close-on-attack message
         this.closeOnAttackMessage = parseComponent(closeOnAttackMessage);
+        this.cannotDropOpenShulker = parseComponent(cannotDropOpenShulker);
     }
     
     /**
@@ -254,4 +258,9 @@ public class MessageComponents {
      * Получает сообщение при закрытии GUI по атаке
      */
     public Component getCloseOnAttackMessage() { return closeOnAttackMessage; }
+    
+    /**
+     * Получает сообщение при попытке выбросить открытый шалкер
+     */
+    public Component getCannotDropOpenShulker() { return cannotDropOpenShulker; }
 } 

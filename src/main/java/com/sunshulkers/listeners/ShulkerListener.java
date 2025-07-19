@@ -14,12 +14,15 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.inventory.*;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.persistence.PersistentDataContainer;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,12 +31,26 @@ public class ShulkerListener implements Listener {
     
     private final SunShulkersPlugin plugin;
     // Отслеживаем какие игроки открыли шалкеры через плагин
-    private final Map<UUID, ItemStack> openedShulkers = new HashMap<>();
-    // Отслеживаем позицию шалкера в инвентаре игрока
-    private final Map<UUID, Integer> shulkerPositions = new HashMap<>();
+    private final Map<UUID, ShulkerData> openedShulkers = new HashMap<>();
+    // Уникальный namespace key для отслеживания шалкеров
+    private final NamespacedKey shulkerIdKey;
+    
+    // Класс для хранения данных об открытом шалкере
+    private static class ShulkerData {
+        final ItemStack originalItem;
+        final UUID shulkerId;
+        final long openTime;
+        
+        ShulkerData(ItemStack originalItem, UUID shulkerId) {
+            this.originalItem = originalItem.clone();
+            this.shulkerId = shulkerId;
+            this.openTime = System.currentTimeMillis();
+        }
+    }
     
     public ShulkerListener(SunShulkersPlugin plugin) {
         this.plugin = plugin;
+        this.shulkerIdKey = new NamespacedKey(plugin, "shulker_id");
     }
     
     @EventHandler(priority = EventPriority.HIGH)
@@ -46,12 +63,48 @@ public class ShulkerListener implements Listener {
         UUID playerId = player.getUniqueId();
         ItemStack clickedItem = event.getCurrentItem();
         
-        // КРИТИЧЕСКАЯ ЗАЩИТА: Если у игрока уже открыт шалкер через наш плагин, 
-        // запрещаем любые клики по шалкерам в его инвентаре
-        if (openedShulkers.containsKey(playerId) && isShulkerBox(clickedItem) && 
-            event.getClickedInventory() == player.getInventory()) {
-            event.setCancelled(true);
-            return;
+        // КРИТИЧЕСКАЯ ЗАЩИТА ОТ ДЮПА: Проверяем действия когда открыт шалкер
+        if (openedShulkers.containsKey(playerId)) {
+            ShulkerData shulkerData = openedShulkers.get(playerId);
+            
+            // Проверяем, что клик происходит в открытом инвентаре шалкера
+            boolean clickInShulkerInventory = event.getClickedInventory() != null && 
+                                            event.getClickedInventory() != player.getInventory();
+            
+            // Блокируем помещение шалкеров в открытый шалкер через числовые клавиши
+            if (event.getClick() == ClickType.NUMBER_KEY && clickInShulkerInventory) {
+                ItemStack hotbarItem = player.getInventory().getItem(event.getHotbarButton());
+                if (isShulkerBox(hotbarItem)) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+            
+            // Блокируем перемещение шалкеров в открытый шалкер (но разрешаем перемещение по инвентарю игрока)
+            if (isShulkerBox(clickedItem) && event.getClickedInventory() == player.getInventory()) {
+                // Проверяем, пытается ли игрок переместить шалкер в открытый инвентарь
+                if (event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY ||
+                    (event.getClick().isShiftClick() && clickInShulkerInventory)) {
+                    event.setCancelled(true);
+                    return;
+                }
+                
+                // Блокируем клики по открытому шалкеру
+                if (isSameShulker(clickedItem, shulkerData.originalItem)) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+            
+            // Блокируем swap с шалкером только в инвентаре шалкера
+            if ((event.getAction() == InventoryAction.HOTBAR_SWAP || 
+                 event.getAction() == InventoryAction.HOTBAR_MOVE_AND_READD) && clickInShulkerInventory) {
+                ItemStack swapItem = player.getInventory().getItem(event.getHotbarButton());
+                if (isShulkerBox(swapItem)) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
         }
         
         // Проверяем, что игрок кликнул по шалкеру в своем инвентаре
@@ -243,11 +296,14 @@ public class ShulkerListener implements Listener {
         if (openedShulkers.containsKey(playerId)) {
             
             // Получаем оригинальный предмет шалкера
-            ItemStack originalShulker = openedShulkers.get(playerId);
+            ShulkerData shulkerData = openedShulkers.get(playerId);
             
             // ВАЖНО: Сохраняем изменения обратно в предмет
-            if (originalShulker != null) {
-                saveShulkerContents(player, originalShulker, event.getInventory());
+            if (shulkerData != null) {
+                // Финальное сохранение при закрытии
+                saveShulkerContents(player, shulkerData.originalItem, event.getInventory());
+                
+
             }
             
             // Безопасно очищаем данные игрока
@@ -271,8 +327,8 @@ public class ShulkerListener implements Listener {
                 plugin.getCooldownManager().setCooldown(player, cooldownTime);
                 
                 // Показываем визуальный кулдаун если включено
-                if (plugin.getConfigManager().isReloadingItemEnabled() && originalShulker != null) {
-                    showItemCooldown(player, originalShulker.getType(), cooldownTime);
+                if (plugin.getConfigManager().isReloadingItemEnabled() && shulkerData != null) {
+                    showItemCooldown(player, shulkerData.originalItem.getType(), cooldownTime);
                 }
             }
         }
@@ -453,16 +509,25 @@ public class ShulkerListener implements Listener {
             return;
         }
         
-        // Не обрабатываем отмененные события
-        if (event.isCancelled()) {
-            return;
-        }
-        
         Player player = (Player) event.getWhoClicked();
         UUID playerId = player.getUniqueId();
         
         // Проверяем, что это инвентарь шалкера, открытого через наш плагин
         if (!openedShulkers.containsKey(playerId)) {
+            return;
+        }
+        
+        // КРИТИЧЕСКАЯ ЗАЩИТА: Блокируем все действия с шалкерами в открытом инвентаре
+        if (event.getClick() == ClickType.NUMBER_KEY) {
+            ItemStack hotbarItem = player.getInventory().getItem(event.getHotbarButton());
+            if (isShulkerBox(hotbarItem)) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+        
+        // Не обрабатываем отмененные события далее
+        if (event.isCancelled()) {
             return;
         }
         
@@ -508,16 +573,18 @@ public class ShulkerListener implements Listener {
             event.getAction() == InventoryAction.HOTBAR_MOVE_AND_READD) {
             
             ItemStack hotbarItem = player.getInventory().getItem(event.getHotbarButton());
-            if (isBlacklistedItem(player, hotbarItem)) {
+            if (isBlacklistedItem(player, hotbarItem) || isShulkerBox(hotbarItem)) {
                 event.setCancelled(true);
-                handleBlacklistedItem(player, hotbarItem);
+                if (isBlacklistedItem(player, hotbarItem)) {
+                    handleBlacklistedItem(player, hotbarItem);
+                }
                 return;
             }
         }
         
         // Получаем оригинальный предмет шалкера
-        ItemStack originalShulker = openedShulkers.get(playerId);
-        if (originalShulker == null) {
+        ShulkerData shulkerData = openedShulkers.get(playerId);
+        if (shulkerData == null) {
             return;
         }
         
@@ -527,7 +594,9 @@ public class ShulkerListener implements Listener {
             public void run() {
                 // Проверяем, что игрок все еще имеет открытый шалкер
                 if (openedShulkers.containsKey(playerId)) {
-                    saveShulkerContents(player, originalShulker, event.getInventory());
+                    // Используем инвентарь из топ-уровня view, а не event.getInventory()
+                    Inventory topInventory = player.getOpenInventory().getTopInventory();
+                    saveShulkerContents(player, shulkerData.originalItem, topInventory);
                 }
             }
         }.runTaskLater(plugin, 1L); // Запускаем через 1 тик
@@ -610,8 +679,8 @@ public class ShulkerListener implements Listener {
         }
         
         // Получаем оригинальный предмет шалкера
-        ItemStack originalShulker = openedShulkers.get(playerId);
-        if (originalShulker == null) {
+        ShulkerData shulkerData = openedShulkers.get(playerId);
+        if (shulkerData == null) {
             return;
         }
         
@@ -621,9 +690,9 @@ public class ShulkerListener implements Listener {
             public void run() {
                 // Проверяем, что игрок все еще имеет открытый шалкер
                 if (openedShulkers.containsKey(playerId)) {
-                    saveShulkerContents(player, originalShulker, event.getInventory());
-                    // УБИРАЕМ эту строку - она вызывала дублирование!
-                    // openedShulkers.put(playerId, originalShulker);
+                    // Используем топ инвентарь
+                    Inventory topInventory = player.getOpenInventory().getTopInventory();
+                    saveShulkerContents(player, shulkerData.originalItem, topInventory);
                 }
             }
         }.runTaskLater(plugin, 1L); // Запускаем через 1 тик
@@ -646,25 +715,30 @@ public class ShulkerListener implements Listener {
             return;
         }
         
-        // Проверяем, что это Shift+click по шалкеру в инвентаре игрока
-        if (event.getClick().isShiftClick() && 
-            event.getClickedInventory() == player.getInventory() &&
-            isShulkerBox(event.getCurrentItem())) {
-            
-            // Отменяем перемещение шалкера в открытый шалкер
-            event.setCancelled(true);
+        // Проверяем только Shift+click
+        if (!event.getClick().isShiftClick()) {
             return;
         }
         
-        // ПРОВЕРКА НА ЗАПРЕЩЕННЫЕ ПРЕДМЕТЫ: Проверяем Shift+click по запрещенному предмету
-        if (event.getClick().isShiftClick() && 
-            event.getClickedInventory() == player.getInventory() &&
-            isBlacklistedItem(player, event.getCurrentItem())) {
-            
-            // Отменяем перемещение запрещенного предмета в шалкер
-            event.setCancelled(true);
-            handleBlacklistedItem(player, event.getCurrentItem());
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null) {
             return;
+        }
+        
+        // Проверяем, что кликаем в инвентаре игрока и хотим переместить в шалкер
+        if (event.getClickedInventory() == player.getInventory()) {
+            // Блокируем перемещение шалкера в открытый шалкер
+            if (isShulkerBox(clickedItem)) {
+                event.setCancelled(true);
+                return;
+            }
+            
+            // Блокируем перемещение запрещенных предметов
+            if (isBlacklistedItem(player, clickedItem)) {
+                event.setCancelled(true);
+                handleBlacklistedItem(player, clickedItem);
+                return;
+            }
         }
     }
     
@@ -675,6 +749,40 @@ public class ShulkerListener implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID playerId = event.getPlayer().getUniqueId();
         cleanupPlayerData(playerId);
+    }
+    
+    /**
+     * Обработчик выбрасывания предметов - предотвращаем выбрасывание открытого шалкера
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+        
+        // Проверяем, есть ли у игрока открытый шалкер
+        if (!openedShulkers.containsKey(playerId)) {
+            return;
+        }
+        
+        ItemStack droppedItem = event.getItemDrop().getItemStack();
+        
+        // Проверяем, что выбрасывается шалкер
+        if (!isShulkerBox(droppedItem)) {
+            return;
+        }
+        
+        ShulkerData shulkerData = openedShulkers.get(playerId);
+        if (shulkerData != null && isSameShulker(droppedItem, shulkerData.originalItem)) {
+            // Игрок пытается выбросить открытый шалкер - запрещаем
+            event.setCancelled(true);
+            
+            Component msg = plugin.getConfigManager().getMessageComponents().getCannotDropOpenShulker();
+            if (msg == null) {
+                // Если сообщение не настроено, используем дефолтное
+                msg = Component.text("§cВы не можете выбросить открытый шалкер!");
+            }
+            plugin.getMessageUtils().sendMessageWithPrefix(player, msg);
+        }
     }
     
     /**
@@ -736,10 +844,8 @@ public class ShulkerListener implements Listener {
             return;
         }
         
-        // Добавляем в карту открытых шалкеров
-        openedShulkers.put(playerId, shulkerItem.clone());
-        // Сохраняем позицию шалкера
-        shulkerPositions.put(playerId, shulkerPosition);
+        // Добавляем в карту открытых шалкеров (создаем простой UUID для идентификации сессии)
+        openedShulkers.put(playerId, new ShulkerData(shulkerItem, UUID.randomUUID()));
         
         // Создаем новый инвентарь с кастомным названием
         Inventory customInventory = Bukkit.createInventory(null, 27, shulkerName);
@@ -767,6 +873,35 @@ public class ShulkerListener implements Listener {
         if (openMessage != null) {
             plugin.getMessageUtils().sendMessageWithPrefix(player, openMessage);
         }
+    }
+    
+    /**
+     * Получает или создает уникальный ID для шалкера
+     */
+    private UUID getOrCreateShulkerId(ItemStack shulkerItem) {
+        if (shulkerItem == null || !shulkerItem.hasItemMeta()) {
+            return UUID.randomUUID();
+        }
+        
+        ItemMeta meta = shulkerItem.getItemMeta().clone();
+        PersistentDataContainer container = meta.getPersistentDataContainer();
+        
+        // Проверяем, есть ли уже ID
+        if (container.has(shulkerIdKey, PersistentDataType.STRING)) {
+            String idString = container.get(shulkerIdKey, PersistentDataType.STRING);
+            try {
+                return UUID.fromString(idString);
+            } catch (IllegalArgumentException e) {
+                // Неверный UUID, создаем новый
+            }
+        }
+        
+        // Создаем новый ID и сохраняем его
+        UUID newId = UUID.randomUUID();
+        container.set(shulkerIdKey, PersistentDataType.STRING, newId.toString());
+        shulkerItem.setItemMeta(meta);
+        
+        return newId;
     }
     
     private String getShulkerDisplayName(ItemStack shulkerItem) {
@@ -889,16 +1024,29 @@ public class ShulkerListener implements Listener {
         }
         
         // Сравниваем имена
-        String name1 = item1.hasItemMeta() && item1.getItemMeta().hasDisplayName() 
-                      ? item1.getItemMeta().getDisplayName() : null;
-        String name2 = item2.hasItemMeta() && item2.getItemMeta().hasDisplayName() 
-                      ? item2.getItemMeta().getDisplayName() : null;
+        String name1 = null;
+        String name2 = null;
         
-        if (name1 == null && name2 == null) {
-            return true; // Оба без имени
+        if (item1.hasItemMeta() && item1.getItemMeta().hasDisplayName()) {
+            name1 = item1.getItemMeta().getDisplayName();
         }
         
-        return name1 != null && name1.equals(name2);
+        if (item2.hasItemMeta() && item2.getItemMeta().hasDisplayName()) {
+            name2 = item2.getItemMeta().getDisplayName();
+        }
+        
+        // Если оба null - это один и тот же шалкер
+        if (name1 == null && name2 == null) {
+            return true;
+        }
+        
+        // Если только один null - разные шалкеры
+        if (name1 == null || name2 == null) {
+            return false;
+        }
+        
+        // Сравниваем строки
+        return name1.equals(name2);
     }
     
     /**
@@ -926,30 +1074,66 @@ public class ShulkerListener implements Listener {
     }
     
     /**
-     * Обновляет шалкер в инвентаре игрока с новым содержимым используя сохраненную позицию
+     * Обновляет шалкер в инвентаре игрока с новым содержимым
      */
     private void updateShulkerInPlayerInventory(Player player, ItemStack updatedShulker) {
         UUID playerId = player.getUniqueId();
-        Integer position = shulkerPositions.get(playerId);
+        ShulkerData shulkerData = openedShulkers.get(playerId);
         
-        if (position == null) {
-            // Если позиция не сохранена, используем старый метод поиска
-            updateShulkerInPlayerInventoryLegacy(player, updatedShulker);
+        if (shulkerData == null) {
+            plugin.getLogger().warning("ShulkerData is null for player " + player.getName());
             return;
         }
         
         org.bukkit.inventory.PlayerInventory inventory = player.getInventory();
+        boolean found = false;
         
-        if (position == -100) {
-            // Главная рука
+        // Сначала проверяем руки
+        if (isSameShulker(inventory.getItemInMainHand(), shulkerData.originalItem)) {
             inventory.setItemInMainHand(updatedShulker);
-        } else if (position == -101) {
-            // Вторая рука
+            found = true;
+        } else if (isSameShulker(inventory.getItemInOffHand(), shulkerData.originalItem)) {
             inventory.setItemInOffHand(updatedShulker);
-        } else if (position >= 0 && position < inventory.getSize()) {
-            // Обычный слот инвентаря
-            inventory.setItem(position, updatedShulker);
+            found = true;
+        } else {
+            // Проверяем все слоты инвентаря
+            for (int i = 0; i < inventory.getSize(); i++) {
+                ItemStack item = inventory.getItem(i);
+                if (item != null && isSameShulker(item, shulkerData.originalItem)) {
+                    inventory.setItem(i, updatedShulker);
+                    found = true;
+                    break;
+                }
+            }
         }
+        
+        if (!found) {
+            plugin.getLogger().warning("Could not find shulker to update for player " + player.getName());
+        }
+    }
+    
+    /**
+     * Проверяет, имеет ли шалкер указанный UUID
+     */
+    private boolean hasShulkerId(ItemStack shulkerItem, UUID targetId) {
+        if (shulkerItem == null || !shulkerItem.hasItemMeta() || targetId == null) {
+            return false;
+        }
+        
+        ItemMeta meta = shulkerItem.getItemMeta();
+        PersistentDataContainer container = meta.getPersistentDataContainer();
+        
+        if (container.has(shulkerIdKey, PersistentDataType.STRING)) {
+            String idString = container.get(shulkerIdKey, PersistentDataType.STRING);
+            try {
+                UUID itemId = UUID.fromString(idString);
+                return itemId.equals(targetId);
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        }
+        
+        return false;
     }
     
     /**
@@ -980,7 +1164,7 @@ public class ShulkerListener implements Listener {
      */
     private void cleanupPlayerData(UUID playerId) {
         openedShulkers.remove(playerId);
-        shulkerPositions.remove(playerId);
+        // shulkerPositions.remove(playerId); // Удалено
     }
     
     /**

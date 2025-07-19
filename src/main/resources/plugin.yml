@@ -1,5 +1,5 @@
 name: SunShulkers
-version: '1.0.2'
+version: '1.0.3'
 main: com.sunshulkers.SunShulkersPlugin
 api-version: 1.16
 authors: [sᴜɴsᴛᴜᴅɪᴏ]
@@ -11,7 +11,7 @@ commands:
     description: Главная команда плагина SunShulkers
     usage: /<command> [reload]
     permission: sunshulkers.admin
-    aliases: [ss, shulkers] 
+    aliases: [ss, shulkers]
   autocollect:
     description: Управление автосбором предметов в шалкер
     usage: /<command> [on/off/status]

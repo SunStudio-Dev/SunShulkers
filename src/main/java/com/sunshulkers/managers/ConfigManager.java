@@ -59,7 +59,8 @@ public class ConfigManager {
             null, // renameInvalidMessage - нет в конфиге
             null, // renameTooltipMessage - нет в конфиге
             getRenameCancelledMessage(),
-            getCloseOnAttackMessage()
+            getCloseOnAttackMessage(),
+            null // cannotDropOpenShulker - используем значение по умолчанию
         );
     }
     
