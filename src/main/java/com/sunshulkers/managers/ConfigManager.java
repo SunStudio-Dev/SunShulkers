@@ -295,6 +295,10 @@ public class ConfigManager {
         return config.getBoolean("settings.auto-collect.notify-no-space", true);
     }
     
+    public int getAutoCollectNotifyNoSpaceCooldown() {
+        return config.getInt("settings.auto-collect.notify-no-space-cooldown", 3);
+    }
+    
     public boolean isAutoCollectDefaultEnabled() {
         return config.getBoolean("settings.auto-collect.default-enabled", true);
     }

@@ -150,9 +150,12 @@ public class AutoCollectListener implements Listener {
         if (!leftover.isEmpty()) {
             // Уведомляем игрока если включено
             if (plugin.getConfigManager().isAutoCollectNotifyNoSpace()) {
-                Component message = plugin.getConfigManager().getMessageComponents().getAutocollectNoSpaceMessage();
-                if (message != null) {
-                    plugin.getMessageUtils().sendMessageWithPrefix(player, message);
+                // Проверяем кулдаун сообщения (3 секунды)
+                if (plugin.getMessageCooldownManager().canShowMessage(player, "autocollect_no_space", plugin.getConfigManager().getAutoCollectNotifyNoSpaceCooldown())) {
+                    Component message = plugin.getConfigManager().getMessageComponents().getAutocollectNoSpaceMessage();
+                    if (message != null) {
+                        plugin.getMessageUtils().sendMessageWithPrefix(player, message);
+                    }
                 }
             }
             return false;

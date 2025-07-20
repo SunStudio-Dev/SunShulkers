@@ -9,6 +9,7 @@ import com.sunshulkers.listeners.UpdateNotifyListener;
 import com.sunshulkers.managers.AutoCollectManager;
 import com.sunshulkers.managers.ConfigManager;
 import com.sunshulkers.managers.CooldownManager;
+import com.sunshulkers.managers.MessageCooldownManager;
 import com.sunshulkers.managers.DatabaseManager;
 import com.sunshulkers.utils.MessageUtils;
 import com.sunshulkers.utils.UpdateChecker;
@@ -21,6 +22,7 @@ public class SunShulkersPlugin extends JavaPlugin {
     private static SunShulkersPlugin instance;
     private ConfigManager configManager;
     private CooldownManager cooldownManager;
+    private MessageCooldownManager messageCooldownManager;
     private MessageUtils messageUtils;
     private BukkitAudiences adventure;
     private AutoCollectManager autoCollectManager;
@@ -41,6 +43,7 @@ public class SunShulkersPlugin extends JavaPlugin {
         configManager.loadConfig();
         
         this.cooldownManager = new CooldownManager();
+        this.messageCooldownManager = new MessageCooldownManager();
         this.databaseManager = new DatabaseManager(this);
         this.autoCollectManager = new AutoCollectManager(this);
         this.messageUtils = new MessageUtils(this);
@@ -153,5 +156,9 @@ public class SunShulkersPlugin extends JavaPlugin {
     
     public ShulkerListener getShulkerListener() {
         return shulkerListener;
+    }
+
+    public MessageCooldownManager getMessageCooldownManager() {
+        return messageCooldownManager;
     }
 }

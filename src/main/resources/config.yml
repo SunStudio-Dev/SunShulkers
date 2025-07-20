@@ -91,6 +91,7 @@ settings:
     enabled: true # Включить ли функцию автосбора
     permission: "sunshulkers.autocollect" # Право для использования автосбора
     notify-no-space: true # Уведомлять ли игрока когда в шалкере нет места
+    notify-no-space-cooldown: 3 # Кулдаун сообщения о полном шалкере в секундах
     default-enabled: true # Включен ли автосбор по умолчанию для игроков с правом (sunshulkers.autocollect)
   # Закрывать интерфейс при атаке игрока
   close-on-attack: false # true/false
