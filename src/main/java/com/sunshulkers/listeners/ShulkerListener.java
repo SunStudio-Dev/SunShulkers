@@ -138,15 +138,12 @@ public class ShulkerListener implements Listener {
                     handleBlacklistedItem(player, cursorItem);
                     return;
                 }
-                
-
             }
             
             // Проверка SHIFT+CLICK из инвентаря игрока в шалкер
             if (event.isShiftClick() && event.getClickedInventory() == player.getInventory()) {
                 ItemStack openShulker = shulkerData.originalItem;
-                    }
-                }
+                // TODO: Add logic here if needed
             }
             
             // Блокируем перемещение шалкеров в открытый шалкер (но разрешаем перемещение по инвентарю игрока)
