@@ -3,6 +3,7 @@ package com.sunshulkers.listeners;
 import com.sunshulkers.SunShulkersPlugin;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -12,11 +13,14 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -77,13 +81,18 @@ public class AnvilListener implements Listener {
         
         AnvilInventory anvil = (AnvilInventory) event.getInventory();
         
-        // Если клик по второму слоту (индекс 1) - проверяем на кнопку переименования
-        if (event.getSlot() == 1) {
-            handleButtonClick(event, player, anvil);
-            return;
+        // Проверка клика по результату (слот 2)
+        if (event.getSlot() == 2 && event.getCurrentItem() != null) {
+            // СНАЧАЛА проверяем кнопку переименования
+            if (isRenameButton(event.getCurrentItem())) {
+                handleButtonClick(event, player, anvil);
+                return;
+            }
         }
         
-        // ЗАЩИТА: Запрещаем любые попытки взять кнопку переименования
+
+        
+        // ЗАЩИТА: Запрещаем любые попытки взять кнопку переименования из других слотов
         if (isRenameButton(event.getCurrentItem())) {
             event.setCancelled(true);
             return;
@@ -104,6 +113,8 @@ public class AnvilListener implements Listener {
             return;
         }
         
+
+        
         // Получаем игрока
         if (anvil.getViewers().isEmpty() || !(anvil.getViewers().get(0) instanceof Player)) {
             return;
@@ -117,28 +128,21 @@ public class AnvilListener implements Listener {
             return;
         }
         
-        // Проверяем текущее состояние
+        // Проверяем текущее состояние для кнопки переименования
         ItemStack firstItem = anvil.getItem(0);
         ItemStack secondItem = anvil.getItem(1);
         
-        boolean shouldHaveButton = firstItem != null && isShulkerBox(firstItem.getType());
-        boolean hasButton = secondItem != null && isRenameButton(secondItem);
+        // Кнопка должна появляться только если:
+        // 1. В первом слоте есть шалкер
+        // 2. Второй слот пустой
+        boolean shouldHaveButton = firstItem != null && 
+                                 isShulkerBox(firstItem.getType()) && 
+                                 (secondItem == null || secondItem.getType() == Material.AIR);
         
-        // Получаем последнее состояние
-        Boolean lastState = lastButtonState.get(playerId);
-        
-        // Обновляем только если состояние изменилось
-        if (lastState == null || lastState != shouldHaveButton) {
-            if (shouldHaveButton && !hasButton) {
-                // Добавляем кнопку
-                ItemStack button = createRenameButton();
-                anvil.setItem(1, button);
-            } else if (!shouldHaveButton && hasButton) {
-                // Убираем кнопку
-                anvil.setItem(1, null);
-            }
-            
-            lastButtonState.put(playerId, shouldHaveButton);
+        if (shouldHaveButton) {
+            // Добавляем кнопку в слот результата
+            ItemStack button = createRenameButton();
+            event.setResult(button);
         }
     }
     
@@ -153,7 +157,7 @@ public class AnvilListener implements Listener {
             return;
         }
         
-        // Отменяем стандартное поведение
+        // Отменяем стандартное поведение ВСЕГДА для кнопки
         event.setCancelled(true);
         
         // Проверяем права
@@ -171,18 +175,13 @@ public class AnvilListener implements Listener {
             return;
         }
         
-        // Проверяем тип клика
-        if (event.isRightClick()) {
-            // ПКМ - отменить
-            Component cancelMsg = plugin.getConfigManager().getMessageComponents().getRenameCancelledMessage();
-            if (cancelMsg != null) {
-                plugin.getMessageUtils().sendMessageWithPrefix(player, cancelMsg);
-            }
-            player.closeInventory();
+        // Проверяем что второй слот пустой (для переименования)
+        ItemStack secondItem = anvil.getItem(1);
+        if (secondItem != null && secondItem.getType() != Material.AIR) {
             return;
         }
         
-        // ЛКМ - начать переименование
+        // Обрабатываем любой клик как начало переименования
         startRenaming(player, shulkerItem);
     }
     
@@ -394,10 +393,10 @@ public class AnvilListener implements Listener {
         if (event.getInventory().getType() == InventoryType.ANVIL) {
             AnvilInventory anvil = (AnvilInventory) event.getInventory();
             
-            // Удаляем кнопку переименования если она есть во втором слоте
-            ItemStack buttonItem = anvil.getItem(1);
-            if (isRenameButton(buttonItem)) {
-                anvil.setItem(1, null);
+            // Удаляем кнопку переименования если она есть в слоте результата
+            ItemStack resultItem = anvil.getItem(2);
+            if (isRenameButton(resultItem)) {
+                anvil.setItem(2, null);
             }
             
             // Очищаем состояние кнопки для игрока
@@ -421,6 +420,34 @@ public class AnvilListener implements Listener {
      * Проверяет является ли материал шалкером
      */
     private boolean isShulkerBox(Material material) {
-        return material.name().endsWith("_SHULKER_BOX");
+        return material == Material.SHULKER_BOX || material.name().endsWith("_SHULKER_BOX");
+    }
+
+    
+    /**
+     * Получает отображаемое имя предмета
+     */
+    private String getItemDisplayName(ItemStack item) {
+        if (item == null) {
+            return "Unknown";
+        }
+        
+        if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+            return item.getItemMeta().getDisplayName();
+        }
+        
+        // Преобразуем MATERIAL_NAME в Material Name
+        String materialName = item.getType().name();
+        String[] words = materialName.toLowerCase().split("_");
+        StringBuilder displayName = new StringBuilder();
+        
+        for (String word : words) {
+            if (displayName.length() > 0) {
+                displayName.append(" ");
+            }
+            displayName.append(word.substring(0, 1).toUpperCase()).append(word.substring(1));
+        }
+        
+        return displayName.toString();
     }
 } 

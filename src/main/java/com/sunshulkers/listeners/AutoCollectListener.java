@@ -3,6 +3,7 @@ package com.sunshulkers.listeners;
 import com.sunshulkers.SunShulkersPlugin;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -11,6 +12,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.block.ShulkerBox;
 import org.bukkit.Sound;
 
@@ -64,6 +68,8 @@ public class AutoCollectListener implements Listener {
         if (isShulkerBox(pickupItem)) {
             return;
         }
+        
+
         
         // Проверяем что предмет не в черном списке (только если у игрока нет права bypass)
         if (!player.hasPermission("sunshulkers.bypass") && 
@@ -124,7 +130,8 @@ public class AutoCollectListener implements Listener {
                type == Material.RED_SHULKER_BOX ||
                type == Material.BLACK_SHULKER_BOX;
     }
-    
+
+
     /**
      * Добавляет предмет в шалкер
      */

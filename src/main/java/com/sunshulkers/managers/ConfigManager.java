@@ -377,4 +377,5 @@ public class ConfigManager {
     public String getDatabasePassword() {
         return config.getString("settings.database.password", "");
     }
+
 }

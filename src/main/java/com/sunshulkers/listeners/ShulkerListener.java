@@ -78,6 +78,9 @@ public class ShulkerListener implements Listener {
             
             // ЗАЩИТА ОТ ВСЕХ ВИДОВ ПОМЕЩЕНИЯ ШАЛКЕРОВ В ШАЛКЕР
             if (clickInShulkerInventory) {
+                // Получаем открытый шалкер для проверки
+                ItemStack shulkerItem = shulkerData.originalItem;
+                
                 // Блокируем помещение шалкеров через числовые клавиши
                 if (event.getClick() == ClickType.NUMBER_KEY) {
                     int hotbarButton = event.getHotbarButton();
@@ -135,6 +138,15 @@ public class ShulkerListener implements Listener {
                     handleBlacklistedItem(player, cursorItem);
                     return;
                 }
+                
+
+            }
+            
+            // Проверка SHIFT+CLICK из инвентаря игрока в шалкер
+            if (event.isShiftClick() && event.getClickedInventory() == player.getInventory()) {
+                ItemStack openShulker = shulkerData.originalItem;
+                    }
+                }
             }
             
             // Блокируем перемещение шалкеров в открытый шалкер (но разрешаем перемещение по инвентарю игрока)
@@ -174,32 +186,6 @@ public class ShulkerListener implements Listener {
             }
             
             // ТЕПЕРЬ проверяем ограничения только для ОТКРЫТИЯ шалкера
-            InventoryView view = event.getView();
-            Inventory topInventory = view.getTopInventory();
-            
-            // Если верхний инвентарь НЕ инвентарь игрока (т.е. открыт сундук, печка и т.д.) - запрещаем ОТКРЫТИЕ
-            if (topInventory != null && topInventory.getType() != InventoryType.CRAFTING) {
-                // InventoryType.CRAFTING - это стандартный инвентарь игрока (2x2 крафт)
-                event.setCancelled(true);
-                
-                // Отправляем сообщение игроку
-                Component msg = Component.text("§cВы можете открывать шалкеры только из своего инвентаря!");
-                plugin.getMessageUtils().sendMessageWithPrefix(player, msg);
-                return;
-            }
-            
-            // Дополнительная проверка: шалкер должен быть в инвентаре игрока
-            if (event.getClickedInventory() != player.getInventory()) {
-                event.setCancelled(true);
-                return;
-            }
-            
-            // ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА: Проверяем, что игрок не находится в инвентаре шалкера
-            if (openedShulkers.containsKey(playerId)) {
-                // Игрок уже имеет открытый шалкер - не обрабатываем клики по другим шалкерам
-                event.setCancelled(true);
-                return;
-            }
             
             // Проверяем права
             if (!player.hasPermission("sunshulkers.use")) {
@@ -289,6 +275,8 @@ public class ShulkerListener implements Listener {
         if (!isShulkerBox(item)) {
             return;
         }
+        
+
         
         // КРИТИЧЕСКАЯ ЗАЩИТА: Если у игрока уже открыт шалкер через наш плагин, 
         // запрещаем взаимодействие с другими шалкерами
@@ -928,6 +916,23 @@ public class ShulkerListener implements Listener {
         }
         
         return item.getType().name().contains("SHULKER_BOX");
+    }
+
+    
+    private String getItemDisplayName(Material material) {
+        // Преобразуем MATERIAL_NAME в Material Name
+        String materialName = material.name();
+        String[] words = materialName.toLowerCase().split("_");
+        StringBuilder displayName = new StringBuilder();
+        
+        for (String word : words) {
+            if (displayName.length() > 0) {
+                displayName.append(" ");
+            }
+            displayName.append(word.substring(0, 1).toUpperCase()).append(word.substring(1));
+        }
+        
+        return displayName.toString();
     }
     
     private void openShulkerBox(Player player, ItemStack shulkerItem) {
