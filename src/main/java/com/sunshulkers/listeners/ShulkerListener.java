@@ -42,13 +42,17 @@ public class ShulkerListener implements Listener {
         final ItemStack originalItem;
         final UUID shulkerId;
         final long openTime;
-        final int originalSlot; // Слот в инвентаре игрока где был шалкер
+        final int originalSlot; // Слот где был шалкер
+        final Inventory sourceInventory; // Инвентарь, откуда был открыт шалкер (может быть null для инвентаря игрока)
+        final boolean fromPlayerInventory; // Был ли шалкер открыт из инвентаря игрока
         
-        ShulkerData(ItemStack originalItem, UUID shulkerId, int originalSlot) {
+        ShulkerData(ItemStack originalItem, UUID shulkerId, int originalSlot, Inventory sourceInventory, boolean fromPlayerInventory) {
             this.originalItem = originalItem.clone();
             this.shulkerId = shulkerId;
             this.openTime = System.currentTimeMillis();
             this.originalSlot = originalSlot;
+            this.sourceInventory = sourceInventory;
+            this.fromPlayerInventory = fromPlayerInventory;
         }
     }
     
@@ -222,7 +226,49 @@ public class ShulkerListener implements Listener {
             
             // Отменяем стандартное действие и открываем шалкер
             event.setCancelled(true);
-            openShulkerBox(player, clickedItem);
+            
+            // КРИТИЧЕСКАЯ ЗАЩИТА ОТ ДЮПА: Определяем корректно источник шалкера
+            Inventory clickedInventory = event.getClickedInventory();
+            InventoryView openView = player.getOpenInventory();
+            Inventory topInventory = openView.getTopInventory();
+            
+            // Определяем: откуда кликнули на шалкер
+            boolean clickedInPlayerInv = (clickedInventory != null && clickedInventory.equals(player.getInventory()));
+            boolean clickedInContainer = (clickedInventory != null && !clickedInventory.equals(player.getInventory()));
+            
+            // Случай 1: Игрок кликает на шалкер в своем инвентаре, пока открыт контейнер (эндер-сундук и т.д.)
+            if (clickedInPlayerInv && topInventory != null && !topInventory.equals(player.getInventory())) {
+                // ВАЖНО: Закрываем контейнер и открываем шалкер с задержкой
+                // Это предотвращает копирование предметов из контейнера в шалкер
+                player.closeInventory();
+                
+                final ItemStack shulkerToOpen = clickedItem.clone();
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        // Находим актуальную позицию шалкера в инвентаре
+                        openShulkerBox(player, shulkerToOpen, player.getInventory(), true, -1);
+                    }
+                }.runTaskLater(plugin, 1L);
+                return;
+            }
+            
+            // Случай 2: Игрок кликает на шалкер внутри контейнера
+            // ЗАПРЕЩАЕМ открывать шалкер из контейнера - это вызывает дюпликацию
+            if (clickedInContainer) {
+                // Отменяем действие - шалкер из контейнера открыть нельзя
+                // Игрок должен сначала достать шалкер в свой инвентарь
+                Component message = Component.text("§cНельзя открывать шалкеры из контейнеров! Сначала переместите шалкер в свой инвентарь.");
+                plugin.getMessageUtils().sendMessageWithPrefix(player, message);
+                return;
+            }
+            
+            // Случай 3: Обычное открытие из инвентаря игрока
+            Inventory sourceInventory = clickedInventory;
+            boolean fromPlayerInventory = clickedInPlayerInv;
+            int clickedSlot = event.getSlot();
+            
+            openShulkerBox(player, clickedItem, sourceInventory, fromPlayerInventory, clickedSlot);
         }
     }
     
@@ -360,8 +406,27 @@ public class ShulkerListener implements Listener {
         // Отменяем стандартное действие
         event.setCancelled(true);
         
-        // Открываем шалкер
-        openShulkerBox(player, item);
+        // КРИТИЧЕСКАЯ ЗАЩИТА ОТ ДЮПА: Проверяем, не открыт ли другой контейнер
+        InventoryView openView = player.getOpenInventory();
+        Inventory topInventory = openView.getTopInventory();
+        
+        // Если у игрока открыт контейнер, закрываем его перед открытием шалкера
+        if (topInventory != null && !topInventory.equals(player.getInventory())) {
+            player.closeInventory();
+            
+            // Открываем шалкер с задержкой
+            final ItemStack shulkerToOpen = item.clone();
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    openShulkerBox(player, shulkerToOpen, player.getInventory(), true, -1);
+                }
+            }.runTaskLater(plugin, 1L);
+            return;
+        }
+        
+        // Открываем шалкер из руки игрока
+        openShulkerBox(player, item, player.getInventory(), true, -1);
     }
     
     @EventHandler
@@ -932,7 +997,7 @@ public class ShulkerListener implements Listener {
         return displayName.toString();
     }
     
-    private void openShulkerBox(Player player, ItemStack shulkerItem) {
+    private void openShulkerBox(Player player, ItemStack shulkerItem, Inventory sourceInventory, boolean fromPlayerInventory, int sourceSlot) {
         if (!(shulkerItem.getItemMeta() instanceof BlockStateMeta)) {
             return;
         }
@@ -954,15 +1019,17 @@ public class ShulkerListener implements Listener {
         // Получаем имя шалкера из конфига
         String shulkerName = getShulkerDisplayName(shulkerItem);
         
-        // Находим позицию шалкера в инвентаре игрока
-        int shulkerPosition = findShulkerPosition(player, shulkerItem);
-        if (shulkerPosition == -1) {
-            // Шалкер не найден в инвентаре
-            return;
+        // Для случая когда шалкер в руке - находим точную позицию
+        if (fromPlayerInventory && sourceSlot == -1) {
+            sourceSlot = findShulkerPosition(player, shulkerItem);
+            if (sourceSlot == -1) {
+                // Шалкер не найден в инвентаре
+                return;
+            }
         }
         
-        // Добавляем в карту открытых шалкеров с информацией о слоте
-        openedShulkers.put(playerId, new ShulkerData(shulkerItem, UUID.randomUUID(), shulkerPosition));
+        // Добавляем в карту открытых шалкеров с информацией об источнике
+        openedShulkers.put(playerId, new ShulkerData(shulkerItem, UUID.randomUUID(), sourceSlot, sourceInventory, fromPlayerInventory));
         
         // Создаем новый инвентарь с кастомным названием
         Inventory customInventory = Bukkit.createInventory(null, 27, shulkerName);
@@ -1199,7 +1266,7 @@ public class ShulkerListener implements Listener {
     }
     
     /**
-     * Обновляет шалкер в инвентаре игрока с новым содержимым
+     * Обновляет шалкер в правильном инвентаре с новым содержимым
      */
     private void updateShulkerInPlayerInventory(Player player, ItemStack updatedShulker) {
         UUID playerId = player.getUniqueId();
@@ -1210,30 +1277,62 @@ public class ShulkerListener implements Listener {
             return;
         }
         
-        org.bukkit.inventory.PlayerInventory inventory = player.getInventory();
         boolean found = false;
         
-        // Сначала проверяем руки
-        if (isSameShulker(inventory.getItemInMainHand(), shulkerData.originalItem)) {
-            inventory.setItemInMainHand(updatedShulker);
-            found = true;
-        } else if (isSameShulker(inventory.getItemInOffHand(), shulkerData.originalItem)) {
-            inventory.setItemInOffHand(updatedShulker);
-            found = true;
+        // КРИТИЧЕСКИ ВАЖНО: Проверяем откуда был открыт шалкер
+        if (shulkerData.fromPlayerInventory) {
+            // Шалкер из инвентаря игрока - обновляем в инвентаре игрока
+            org.bukkit.inventory.PlayerInventory inventory = player.getInventory();
+            
+            // Сначала проверяем руки
+            if (isSameShulker(inventory.getItemInMainHand(), shulkerData.originalItem)) {
+                inventory.setItemInMainHand(updatedShulker);
+                found = true;
+            } else if (isSameShulker(inventory.getItemInOffHand(), shulkerData.originalItem)) {
+                inventory.setItemInOffHand(updatedShulker);
+                found = true;
+            } else {
+                // Проверяем все слоты инвентаря
+                for (int i = 0; i < inventory.getSize(); i++) {
+                    ItemStack item = inventory.getItem(i);
+                    if (item != null && isSameShulker(item, shulkerData.originalItem)) {
+                        inventory.setItem(i, updatedShulker);
+                        found = true;
+                        break;
+                    }
+                }
+            }
         } else {
-            // Проверяем все слоты инвентаря
-            for (int i = 0; i < inventory.getSize(); i++) {
-                ItemStack item = inventory.getItem(i);
-                if (item != null && isSameShulker(item, shulkerData.originalItem)) {
-                    inventory.setItem(i, updatedShulker);
-                    found = true;
-                    break;
+            // Шалкер из внешнего контейнера (эндер-сундук и т.д.) - обновляем там
+            if (shulkerData.sourceInventory != null) {
+                int slot = shulkerData.originalSlot;
+                
+                // Проверяем что слот валидный
+                if (slot >= 0 && slot < shulkerData.sourceInventory.getSize()) {
+                    ItemStack itemInSlot = shulkerData.sourceInventory.getItem(slot);
+                    
+                    // Дополнительная проверка что это тот же шалкер
+                    if (itemInSlot != null && isSameShulker(itemInSlot, shulkerData.originalItem)) {
+                        shulkerData.sourceInventory.setItem(slot, updatedShulker);
+                        found = true;
+                    } else {
+                        // Слот изменился, ищем по всему инвентарю
+                        for (int i = 0; i < shulkerData.sourceInventory.getSize(); i++) {
+                            ItemStack item = shulkerData.sourceInventory.getItem(i);
+                            if (item != null && isSameShulker(item, shulkerData.originalItem)) {
+                                shulkerData.sourceInventory.setItem(i, updatedShulker);
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
         
         if (!found) {
-            plugin.getLogger().warning("Could not find shulker to update for player " + player.getName());
+            plugin.getLogger().warning("Could not find shulker to update for player " + player.getName() + 
+                " (fromPlayerInv=" + shulkerData.fromPlayerInventory + ", slot=" + shulkerData.originalSlot + ")");
         }
     }
     
